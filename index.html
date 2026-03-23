@@ -1,0 +1,179 @@
+<!doctype html>
+<html lang="zh-Hans">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>每日启动打卡</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div class="header__inner">
+        <div>
+          <div class="kicker">🔁 启动动作</div>
+          <h1 class="title">每日启动打卡</h1>
+          <div class="subtle">25 分钟留下一个看得见的痕迹</div>
+        </div>
+        <div class="header__actions">
+          <button id="newSessionBtn" class="btn btn--ghost" type="button">新建一轮</button>
+          <button id="exportBtn" class="btn btn--primary" type="button">导出 Markdown</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="container">
+      <section class="card">
+        <div class="card__row">
+          <div class="card__col">
+            <div class="sectionTitle">本轮信息</div>
+            <div class="grid2">
+              <label class="field">
+                <div class="field__label">日期</div>
+                <input id="date" type="date" />
+              </label>
+              <label class="field">
+                <div class="field__label">主题（可选）</div>
+                <input id="theme" type="text" placeholder="比如：cs50x week2" />
+              </label>
+            </div>
+          </div>
+          <div class="card__col card__col--timer">
+            <div class="sectionTitle">25 分钟计时</div>
+            <div class="timer">
+              <div class="timer__time" id="timerText">25:00</div>
+              <div class="timer__meta" id="timerMeta">未开始</div>
+              <div class="timer__actions">
+                <button id="startTimerBtn" class="btn btn--primary" type="button">开始</button>
+                <button id="pauseTimerBtn" class="btn btn--ghost" type="button" disabled>暂停</button>
+                <button id="resetTimerBtn" class="btn btn--ghost" type="button">重置</button>
+              </div>
+              <div class="timer__hint subtle">提示：开始时会自动写入“开始时间”；结束时会建议写“本轮结果”。</div>
+              <div class="sound">
+                <div class="sectionTitle" style="margin-top:12px">声音（可选）</div>
+                <div class="grid2 soundGrid">
+                  <label class="field">
+                    <div class="field__label">白噪音</div>
+                    <select id="whiteNoiseType">
+                      <option value="off">关闭</option>
+                      <option value="library">图书馆翻书（合成）</option>
+                      <option value="rain">雨声（合成）</option>
+                      <option value="birds">鸟叫（合成）</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <div class="field__label">白噪音音量：<span id="whiteNoiseVolumeText">35%</span></div>
+                    <input id="whiteNoiseVolume" type="range" min="0" max="100" step="1" value="35" />
+                  </label>
+                </div>
+                <div class="grid2 soundGrid">
+                  <label class="field">
+                    <div class="field__label">铃声（结束时）</div>
+                    <select id="bellType">
+                      <option value="off">关闭</option>
+                      <option value="chime">温柔叮当</option>
+                      <option value="clear">清脆铃声</option>
+                    </select>
+                  </label>
+                  <label class="field">
+                    <div class="field__label">铃声音量：<span id="bellVolumeText">60%</span></div>
+                    <input id="bellVolume" type="range" min="0" max="100" step="1" value="60" />
+                  </label>
+                </div>
+                <div class="subtle soundHint">注意：浏览器需要你的“开始按钮点击”作为授权，才能播放声音。</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">我的第一步是</div>
+        <div class="subtle">把第一步写得足够具体，最好是一句可执行指令。</div>
+        <textarea id="firstStep" rows="3" placeholder="比如：打开 cs50x 作业并进入 week2 的题目页"></textarea>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">本轮产出定义（25 分钟后，我要留下一个看得见的痕迹）</div>
+        <textarea id="outputDefinition" rows="3" placeholder="比如：完成作业 / 完成一道题并提交 / 写下 1 段总结"></textarea>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">🧠 杂念停车场</div>
+        <div class="subtle">想到什么先放这里，不用处理。每行一条。</div>
+        <textarea id="parkingLot" rows="8" placeholder="- week2 作业到视频&#10;- iPad 相关配件..."></textarea>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">时间</div>
+        <div class="grid3">
+          <label class="field">
+            <div class="field__label">当前段开始时间</div>
+            <input id="startTime" type="time" />
+          </label>
+          <label class="field">
+            <div class="field__label">当前段结束时间</div>
+            <input id="endTime" type="time" />
+          </label>
+          <label class="field">
+            <div class="field__label">累计用时（自动）</div>
+            <input id="duration" type="text" readonly />
+          </label>
+        </div>
+        <div class="sectionTitle" style="margin-top:14px">25分钟分段记录</div>
+        <textarea id="segmentsLog" rows="4" readonly placeholder="每完成一个 25 分钟块，这里会自动追加“开始-结束”。"></textarea>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">✅ 本轮结果</div>
+        <div class="subtle">写一句“发生了什么 / 留下了什么”。</div>
+        <textarea id="result" rows="4" placeholder="比如：完成了 X，提交了 Y；下一步是 Z"></textarea>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">完成状态</div>
+        <div class="checks">
+          <label class="check">
+            <input id="done" type="checkbox" />
+            <span>完成</span>
+          </label>
+          <label class="check">
+            <input id="notDoneReasonEnabled" type="checkbox" />
+            <span>未完成（写原因/下一步）</span>
+          </label>
+        </div>
+        <textarea id="notDoneReason" rows="3" placeholder="比如：卡在 X；下一步：先看 10 分钟讲解再做 Y" disabled></textarea>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">历史记录</div>
+        <div class="subtle">保存在本地浏览器，可随时切换查看/继续编辑。</div>
+        <div class="history">
+          <select id="historySelect"></select>
+          <button id="loadHistoryBtn" class="btn btn--ghost" type="button">加载</button>
+          <button id="deleteHistoryBtn" class="btn btn--danger" type="button">删除</button>
+        </div>
+        <div class="subtle" id="saveStatus">未保存</div>
+      </section>
+
+      <footer class="footer subtle">
+        数据仅存本机浏览器（localStorage）。把本次导出的 Markdown 贴到你的笔记/Notion/日志里即可。
+      </footer>
+    </main>
+
+    <dialog id="exportDialog" class="dialog">
+      <form method="dialog" class="dialog__panel">
+        <div class="dialog__head">
+          <div class="dialog__title">Markdown 预览</div>
+          <button class="btn btn--ghost" value="close" type="submit">关闭</button>
+        </div>
+        <textarea id="exportText" rows="18" spellcheck="false"></textarea>
+        <div class="dialog__actions">
+          <button id="copyExportBtn" class="btn btn--primary" value="copy" type="button">复制到剪贴板</button>
+          <button id="downloadExportBtn" class="btn btn--ghost" value="download" type="button">下载 .md</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
