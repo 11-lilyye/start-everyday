@@ -112,20 +112,25 @@ input[readonly]{opacity:.85}
 }
 
 .timer{display:flex; flex-direction:column; gap:10px}
+.card__col--timer .timer{align-items:center; text-align:center}
 .timer__time{
   font-variant-numeric: tabular-nums;
-  font-size: 40px;
+  font-size: 72px;
   font-weight: 750;
   letter-spacing: .02em;
+  line-height: 1.05;
 }
 .timer__meta{font-size:12px; color:var(--muted)}
-.timer__actions{display:flex; gap:10px; flex-wrap:wrap}
-.timer__modes{display:flex; gap:8px; flex-wrap:wrap}
-.timer__modes .btn{padding:8px 10px; font-size:12px}
+.timer__actions{display:flex; gap:10px; flex-wrap:wrap; justify-content:center}
+.timer__actions #startTimerBtn{min-width: 220px; font-size: 28px; letter-spacing: .06em; padding: 14px 18px}
+.timer__modes{display:flex; gap:8px; flex-wrap:wrap; justify-content:center}
+.timer__modes .btn{padding:8px 12px; font-size:13px}
+.timer__modes .btn.btn--primary{background: rgba(255,255,255,.18); border-color: rgba(255,255,255,.2)}
 
 .sound{margin-top: 6px}
 .soundGrid{margin-top: 6px}
 .soundHint{margin-top: 10px}
+.sound{width: 100%; text-align: left}
 
 input[type="range"]{
   padding: 10px 10px;

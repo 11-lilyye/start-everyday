@@ -4,9 +4,9 @@ const CLOUD_CONFIG_KEY = "daily_startup_cloud_config_v1";
 const GIST_FILE_NAME = "daily_startup_sessions.json";
 const BASE_TITLE = "每日启动打卡";
 const TIMER_MODES = {
-  focus: { label: "专注", seconds: 25 * 60 },
-  short_break: { label: "短休", seconds: 5 * 60 },
-  long_break: { label: "长休", seconds: 15 * 60 },
+  focus: { label: "Pomodoro", seconds: 25 * 60 },
+  short_break: { label: "Short Break", seconds: 5 * 60 },
+  long_break: { label: "Long Break", seconds: 15 * 60 },
 };
 
 const $ = (id) => document.getElementById(id);
@@ -784,6 +784,9 @@ async function githubApiRequest(path, method, token, bodyObj) {
 }
 
 function readCloudConfigFromUI() {
+  if (!els.cloudEnabled || !els.cloudAutoSync || !els.cloudGistId || !els.cloudToken) {
+    return { enabled: false, autoSync: false, gistId: "", token: "" };
+  }
   return {
     enabled: Boolean(els.cloudEnabled.checked),
     autoSync: Boolean(els.cloudAutoSync.checked),
@@ -793,6 +796,7 @@ function readCloudConfigFromUI() {
 }
 
 function hydrateCloudUI() {
+  if (!els.cloudEnabled || !els.cloudAutoSync || !els.cloudGistId || !els.cloudToken) return;
   const cfg = loadCloudConfig();
   els.cloudEnabled.checked = cfg.enabled;
   els.cloudAutoSync.checked = cfg.autoSync;
@@ -1235,11 +1239,6 @@ function timerReset() {
 function switchTimerMode(nextMode) {
   if (!activeSession) return;
   if (!TIMER_MODES[nextMode]) return;
-
-  if (activeSession.timer?.running) {
-    const ok = window.confirm("当前倒计时进行中，切换模式会重置当前计时。继续吗？");
-    if (!ok) return;
-  }
 
   stopTicking();
   stopWhiteNoise();

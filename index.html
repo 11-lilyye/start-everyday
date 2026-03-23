@@ -38,19 +38,19 @@
             </div>
           </div>
           <div class="card__col card__col--timer">
-            <div class="sectionTitle">25 分钟计时</div>
+            <div class="sectionTitle">Pomodoro Timer</div>
             <div class="timer">
+              <div class="timer__modes">
+                <button id="focusModeBtn" class="btn btn--ghost" type="button">Pomodoro</button>
+                <button id="shortBreakModeBtn" class="btn btn--ghost" type="button">Short Break</button>
+                <button id="longBreakModeBtn" class="btn btn--ghost" type="button">Long Break</button>
+              </div>
               <div class="timer__time" id="timerText">25:00</div>
               <div class="timer__meta" id="timerMeta">未开始</div>
               <div class="timer__actions">
-                <button id="startTimerBtn" class="btn btn--primary" type="button">开始</button>
+                <button id="startTimerBtn" class="btn btn--primary" type="button">START</button>
                 <button id="pauseTimerBtn" class="btn btn--ghost" type="button" disabled>暂停</button>
                 <button id="resetTimerBtn" class="btn btn--ghost" type="button">重置</button>
-              </div>
-              <div class="timer__modes">
-                <button id="focusModeBtn" class="btn btn--ghost" type="button">专注 25m</button>
-                <button id="shortBreakModeBtn" class="btn btn--ghost" type="button">短休 5m</button>
-                <button id="longBreakModeBtn" class="btn btn--ghost" type="button">长休 15m</button>
               </div>
               <div class="timer__hint subtle">提示：开始时会自动写入“开始时间”；结束时会建议写“本轮结果”。</div>
               <div class="sound">
