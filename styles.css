@@ -120,6 +120,8 @@ input[readonly]{opacity:.85}
 }
 .timer__meta{font-size:12px; color:var(--muted)}
 .timer__actions{display:flex; gap:10px; flex-wrap:wrap}
+.timer__modes{display:flex; gap:8px; flex-wrap:wrap}
+.timer__modes .btn{padding:8px 10px; font-size:12px}
 
 .sound{margin-top: 6px}
 .soundGrid{margin-top: 6px}

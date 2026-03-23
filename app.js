@@ -1,6 +1,13 @@
 const STORAGE_KEY = "daily_startup_sessions_v1";
 const ACTIVE_ID_KEY = "daily_startup_active_id_v1";
+const CLOUD_CONFIG_KEY = "daily_startup_cloud_config_v1";
+const GIST_FILE_NAME = "daily_startup_sessions.json";
 const BASE_TITLE = "每日启动打卡";
+const TIMER_MODES = {
+  focus: { label: "专注", seconds: 25 * 60 },
+  short_break: { label: "短休", seconds: 5 * 60 },
+  long_break: { label: "长休", seconds: 15 * 60 },
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -22,12 +29,23 @@ const els = {
   loadHistoryBtn: $("loadHistoryBtn"),
   deleteHistoryBtn: $("deleteHistoryBtn"),
   saveStatus: $("saveStatus"),
+  cloudToken: $("cloudToken"),
+  cloudGistId: $("cloudGistId"),
+  cloudEnabled: $("cloudEnabled"),
+  cloudAutoSync: $("cloudAutoSync"),
+  cloudCreateBtn: $("cloudCreateBtn"),
+  cloudPullBtn: $("cloudPullBtn"),
+  cloudPushBtn: $("cloudPushBtn"),
+  cloudStatus: $("cloudStatus"),
 
   timerText: $("timerText"),
   timerMeta: $("timerMeta"),
   startTimerBtn: $("startTimerBtn"),
   pauseTimerBtn: $("pauseTimerBtn"),
   resetTimerBtn: $("resetTimerBtn"),
+  focusModeBtn: $("focusModeBtn"),
+  shortBreakModeBtn: $("shortBreakModeBtn"),
+  longBreakModeBtn: $("longBreakModeBtn"),
 
   whiteNoiseType: $("whiteNoiseType"),
   whiteNoiseVolume: $("whiteNoiseVolume"),
@@ -137,6 +155,15 @@ function syncTimeUIFromSession(s) {
   els.segmentsLog.value = log || "";
 }
 
+function getTimerMode(mode) {
+  return TIMER_MODES[mode] || TIMER_MODES.focus;
+}
+
+function isFocusMode(s) {
+  const mode = s?.timer?.mode || "focus";
+  return mode === "focus";
+}
+
 function safeParseJSON(s, fallback) {
   try {
     return JSON.parse(s);
@@ -153,6 +180,21 @@ function loadAllSessions() {
 
 function saveAllSessions(sessions) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(sessions));
+}
+
+function loadCloudConfig() {
+  const raw = localStorage.getItem(CLOUD_CONFIG_KEY);
+  const cfg = safeParseJSON(raw || "{}", {});
+  return {
+    enabled: Boolean(cfg.enabled),
+    autoSync: Boolean(cfg.autoSync),
+    gistId: (cfg.gistId || "").trim(),
+    token: (cfg.token || "").trim(),
+  };
+}
+
+function saveCloudConfig(cfg) {
+  localStorage.setItem(CLOUD_CONFIG_KEY, JSON.stringify(cfg));
 }
 
 function getActiveId() {
@@ -207,8 +249,9 @@ function defaultSession() {
     bellVolume: 60,
 
     timer: {
-      totalSeconds: 25 * 60,
-      remainingSeconds: 25 * 60,
+      mode: "focus",
+      totalSeconds: TIMER_MODES.focus.seconds,
+      remainingSeconds: TIMER_MODES.focus.seconds,
       running: false,
       startedAtISO: null,
       lastTickISO: null,
@@ -246,6 +289,7 @@ function computeDuration(startHHMM, endHHMM) {
 let activeSession = null;
 let autosaveTimer = null;
 let tickTimer = null;
+let cloudSyncTimer = null;
 
 // ===== Audio (WebAudio) =====
 let audioCtx = null;
@@ -643,6 +687,10 @@ function setSaveStatus(text) {
   els.saveStatus.textContent = text;
 }
 
+function setCloudStatus(text) {
+  if (els.cloudStatus) els.cloudStatus.textContent = text;
+}
+
 function hydrateFormFromSession(s) {
   els.date.value = s.date || "";
   els.theme.value = s.theme || "";
@@ -713,6 +761,157 @@ function removeSession(id) {
   saveAllSessions(sessions);
 }
 
+async function githubApiRequest(path, method, token, bodyObj) {
+  const headers = {
+    Accept: "application/vnd.github+json",
+    Authorization: `Bearer ${token}`,
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  const res = await fetch(`https://api.github.com${path}`, {
+    method,
+    headers,
+    body: bodyObj ? JSON.stringify(bodyObj) : undefined,
+  });
+  if (!res.ok) {
+    let detail = "";
+    try {
+      const j = await res.json();
+      detail = j?.message || "";
+    } catch {}
+    throw new Error(`GitHub API ${res.status}${detail ? `: ${detail}` : ""}`);
+  }
+  return res.json();
+}
+
+function readCloudConfigFromUI() {
+  return {
+    enabled: Boolean(els.cloudEnabled.checked),
+    autoSync: Boolean(els.cloudAutoSync.checked),
+    gistId: (els.cloudGistId.value || "").trim(),
+    token: (els.cloudToken.value || "").trim(),
+  };
+}
+
+function hydrateCloudUI() {
+  const cfg = loadCloudConfig();
+  els.cloudEnabled.checked = cfg.enabled;
+  els.cloudAutoSync.checked = cfg.autoSync;
+  els.cloudGistId.value = cfg.gistId;
+  els.cloudToken.value = cfg.token;
+  setCloudStatus(cfg.enabled ? "已启用（待同步）" : "未启用");
+}
+
+function saveCloudConfigFromUI() {
+  const cfg = readCloudConfigFromUI();
+  saveCloudConfig(cfg);
+  setCloudStatus(cfg.enabled ? "已保存配置" : "未启用");
+}
+
+function buildCloudPayload() {
+  const sessions = loadAllSessions();
+  const activeId = getActiveId();
+  return {
+    schemaVersion: 1,
+    updatedAt: nowISO(),
+    activeId,
+    sessions,
+  };
+}
+
+function applyCloudPayload(payload) {
+  const sessions = Array.isArray(payload?.sessions) ? payload.sessions : [];
+  saveAllSessions(sessions);
+
+  const activeId = (payload?.activeId || "").trim();
+  const selectedId = sessions.find((s) => s.id === activeId)?.id || sessions[0]?.id || "";
+  if (selectedId) setActiveId(selectedId);
+
+  activeSession = ensureActiveSession();
+  refreshHistorySelect(activeSession.id);
+  hydrateFormFromSession(activeSession);
+}
+
+async function createCloudGist() {
+  const cfg = readCloudConfigFromUI();
+  if (!cfg.token) {
+    setCloudStatus("请先填 GitHub Token");
+    return;
+  }
+  setCloudStatus("正在创建云端仓库…");
+  const payload = buildCloudPayload();
+  const gist = await githubApiRequest("/gists", "POST", cfg.token, {
+    description: "Daily startup memory sync",
+    public: false,
+    files: {
+      [GIST_FILE_NAME]: {
+        content: JSON.stringify(payload, null, 2),
+      },
+    },
+  });
+  const id = gist?.id || "";
+  if (!id) throw new Error("创建失败：未返回 Gist ID");
+  els.cloudGistId.value = id;
+  const updated = readCloudConfigFromUI();
+  updated.enabled = true;
+  els.cloudEnabled.checked = true;
+  saveCloudConfig(updated);
+  setCloudStatus("云端仓库已创建并启用");
+}
+
+async function pushToCloud() {
+  const cfg = readCloudConfigFromUI();
+  if (!cfg.enabled) {
+    setCloudStatus("请先启用记忆模式");
+    return;
+  }
+  if (!cfg.token || !cfg.gistId) {
+    setCloudStatus("请填写 Token 和 Gist ID");
+    return;
+  }
+  setCloudStatus("正在上传到云端…");
+  const payload = buildCloudPayload();
+  await githubApiRequest(`/gists/${encodeURIComponent(cfg.gistId)}`, "PATCH", cfg.token, {
+    files: {
+      [GIST_FILE_NAME]: {
+        content: JSON.stringify(payload, null, 2),
+      },
+    },
+  });
+  setCloudStatus(`已上传 · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+}
+
+async function pullFromCloud() {
+  const cfg = readCloudConfigFromUI();
+  if (!cfg.enabled) {
+    setCloudStatus("请先启用记忆模式");
+    return;
+  }
+  if (!cfg.token || !cfg.gistId) {
+    setCloudStatus("请填写 Token 和 Gist ID");
+    return;
+  }
+  setCloudStatus("正在从云端下载…");
+  const gist = await githubApiRequest(`/gists/${encodeURIComponent(cfg.gistId)}`, "GET", cfg.token);
+  const files = gist?.files || {};
+  const target = files[GIST_FILE_NAME] || Object.values(files)[0];
+  const raw = target?.content || "";
+  const payload = safeParseJSON(raw, null);
+  if (!payload || !Array.isArray(payload.sessions)) {
+    throw new Error("云端数据格式不正确");
+  }
+  applyCloudPayload(payload);
+  setCloudStatus(`已下载 · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+}
+
+function scheduleCloudAutoPush() {
+  const cfg = readCloudConfigFromUI();
+  if (!cfg.enabled || !cfg.autoSync || !cfg.token || !cfg.gistId) return;
+  if (cloudSyncTimer) window.clearTimeout(cloudSyncTimer);
+  cloudSyncTimer = window.setTimeout(() => {
+    pushToCloud().catch((err) => setCloudStatus(`自动同步失败：${err.message || "未知错误"}`));
+  }, 2000);
+}
+
 function refreshHistorySelect(activeId) {
   const sessions = loadAllSessions();
   els.historySelect.innerHTML = "";
@@ -763,6 +962,7 @@ function scheduleAutosave() {
     upsertSession(activeSession);
     refreshHistorySelect(activeSession.id);
     setSaveStatus(`已保存 · ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`);
+    scheduleCloudAutoPush();
   }, 450);
 }
 
@@ -832,31 +1032,38 @@ function bindAutosave() {
 // Timer logic
 function renderTimerFromSession(s) {
   const t = s.timer || {};
+  if (!t.mode) t.mode = "focus";
+  if (!Number.isFinite(t.totalSeconds) || t.totalSeconds <= 0) t.totalSeconds = getTimerMode(t.mode).seconds;
+  if (!Number.isFinite(t.remainingSeconds) || t.remainingSeconds < 0) t.remainingSeconds = t.totalSeconds;
+  const modeCfg = getTimerMode(t.mode);
   els.timerText.textContent = minutesToMMSS(t.remainingSeconds ?? 25 * 60);
 
   // Sync countdown into browser tab title
   const remaining = t.remainingSeconds ?? 25 * 60;
   if (t.running) {
-    document.title = `${minutesToMMSS(remaining)} · ${BASE_TITLE}`;
+    document.title = `${modeCfg.label} ${minutesToMMSS(remaining)} · ${BASE_TITLE}`;
   } else if ((t.remainingSeconds ?? 0) <= 0) {
-    document.title = `完成 · ${BASE_TITLE}`;
+    document.title = `${modeCfg.label} 完成 · ${BASE_TITLE}`;
   } else if (t.startedAtISO) {
-    document.title = `已暂停 · ${minutesToMMSS(remaining)} · ${BASE_TITLE}`;
+    document.title = `${modeCfg.label} 已暂停 · ${minutesToMMSS(remaining)} · ${BASE_TITLE}`;
   } else {
     document.title = BASE_TITLE;
   }
 
   if (t.running) {
-    els.timerMeta.textContent = "进行中";
+    els.timerMeta.textContent = `${modeCfg.label}进行中`;
   } else if ((t.remainingSeconds ?? 0) <= 0) {
-    els.timerMeta.textContent = "已完成";
+    els.timerMeta.textContent = `${modeCfg.label}已完成`;
   } else if (t.startedAtISO) {
-    els.timerMeta.textContent = "已暂停";
+    els.timerMeta.textContent = `${modeCfg.label}已暂停`;
   } else {
-    els.timerMeta.textContent = "未开始";
+    els.timerMeta.textContent = `${modeCfg.label}未开始`;
   }
   els.startTimerBtn.disabled = Boolean(t.running);
   els.pauseTimerBtn.disabled = !Boolean(t.running);
+  if (els.focusModeBtn) els.focusModeBtn.classList.toggle("btn--primary", t.mode === "focus");
+  if (els.shortBreakModeBtn) els.shortBreakModeBtn.classList.toggle("btn--primary", t.mode === "short_break");
+  if (els.longBreakModeBtn) els.longBreakModeBtn.classList.toggle("btn--primary", t.mode === "long_break");
 }
 
 function stopTicking() {
@@ -883,22 +1090,24 @@ function startTicking() {
       // timer finished: stop noise + optional bell
       stopWhiteNoise();
 
-      const endHHMM = fmtHHMM(new Date());
-      const segStart =
-        activeSession.timer.currentBlockStartHHMM || els.startTime.value || fmtHHMM(new Date());
-      activeSession.timer.currentBlockStartHHMM = segStart;
+      if (isFocusMode(activeSession)) {
+        const endHHMM = fmtHHMM(new Date());
+        const segStart =
+          activeSession.timer.currentBlockStartHHMM || els.startTime.value || fmtHHMM(new Date());
+        activeSession.timer.currentBlockStartHHMM = segStart;
 
-      // 当前段：写入结束时间，并追加到分段记录
-      els.startTime.value = segStart;
-      els.endTime.value = endHHMM;
+        // 当前段：写入结束时间，并追加到分段记录
+        els.startTime.value = segStart;
+        els.endTime.value = endHHMM;
 
-      if (!Array.isArray(activeSession.timer.segments)) activeSession.timer.segments = [];
-      const segs = activeSession.timer.segments;
-      const last = segs[segs.length - 1];
-      const shouldPush = !last || last.startTime !== segStart || last.endTime !== endHHMM;
-      if (shouldPush) segs.push({ startTime: segStart, endTime: endHHMM });
+        if (!Array.isArray(activeSession.timer.segments)) activeSession.timer.segments = [];
+        const segs = activeSession.timer.segments;
+        const last = segs[segs.length - 1];
+        const shouldPush = !last || last.startTime !== segStart || last.endTime !== endHHMM;
+        if (shouldPush) segs.push({ startTime: segStart, endTime: endHHMM });
 
-      syncTimeUIFromSession(activeSession);
+        syncTimeUIFromSession(activeSession);
+      }
 
       playBell(els.bellType?.value, Number(els.bellVolume?.value ?? 60));
 
@@ -931,21 +1140,28 @@ function setEndTimeIfEmpty() {
 
 function timerStart() {
   if (!activeSession) return;
+  if (!activeSession.timer.mode) activeSession.timer.mode = "focus";
+  if (!Number.isFinite(activeSession.timer.totalSeconds) || activeSession.timer.totalSeconds <= 0) {
+    activeSession.timer.totalSeconds = getTimerMode(activeSession.timer.mode).seconds;
+  }
   const now = new Date();
   const isNewBlock = activeSession.timer.remainingSeconds <= 0;
+  const focusMode = isFocusMode(activeSession);
 
   if (isNewBlock) {
     // 上一段 25 分钟已完成：开启下一段，并把“当前段开始/结束”重置成新值
     activeSession.timer.remainingSeconds = activeSession.timer.totalSeconds;
     activeSession.timer.completedAtISO = null;
-    activeSession.timer.currentBlockStartHHMM = fmtHHMM(now);
-    els.startTime.value = activeSession.timer.currentBlockStartHHMM;
-    els.endTime.value = "";
+    if (focusMode) {
+      activeSession.timer.currentBlockStartHHMM = fmtHHMM(now);
+      els.startTime.value = activeSession.timer.currentBlockStartHHMM;
+      els.endTime.value = "";
+    }
     activeSession.timer.startedAtISO = nowISO();
-    syncTimeUIFromSession(activeSession);
+    if (focusMode) syncTimeUIFromSession(activeSession);
   } else {
     // 暂停后继续：同一段不追加分段记录，只继续倒计时
-    if (!activeSession.timer.currentBlockStartHHMM) {
+    if (focusMode && !activeSession.timer.currentBlockStartHHMM) {
       const st = els.startTime.value || fmtHHMM(now);
       els.startTime.value = st;
       activeSession.timer.currentBlockStartHHMM = st;
@@ -989,17 +1205,22 @@ function timerPause() {
 function timerReset() {
   if (!activeSession) return;
   activeSession.timer.running = false;
-  activeSession.timer.remainingSeconds = activeSession.timer.totalSeconds;
+  activeSession.timer.remainingSeconds = getTimerMode(activeSession.timer.mode || "focus").seconds;
+  activeSession.timer.totalSeconds = getTimerMode(activeSession.timer.mode || "focus").seconds;
   activeSession.timer.startedAtISO = null;
   activeSession.timer.lastTickISO = null;
   activeSession.timer.completedAtISO = null;
-  activeSession.timer.segments = [];
-  activeSession.timer.currentBlockStartHHMM = "";
+  if (isFocusMode(activeSession)) {
+    activeSession.timer.segments = [];
+    activeSession.timer.currentBlockStartHHMM = "";
+  }
 
   // Reset UI "当前段"
-  els.startTime.value = "";
-  els.endTime.value = "";
-  syncTimeUIFromSession(activeSession);
+  if (isFocusMode(activeSession)) {
+    els.startTime.value = "";
+    els.endTime.value = "";
+    syncTimeUIFromSession(activeSession);
+  }
 
   renderTimerFromSession(activeSession);
   stopTicking();
@@ -1011,10 +1232,44 @@ function timerReset() {
   scheduleAutosave();
 }
 
+function switchTimerMode(nextMode) {
+  if (!activeSession) return;
+  if (!TIMER_MODES[nextMode]) return;
+
+  if (activeSession.timer?.running) {
+    const ok = window.confirm("当前倒计时进行中，切换模式会重置当前计时。继续吗？");
+    if (!ok) return;
+  }
+
+  stopTicking();
+  stopWhiteNoise();
+
+  activeSession.timer.mode = nextMode;
+  activeSession.timer.totalSeconds = TIMER_MODES[nextMode].seconds;
+  activeSession.timer.remainingSeconds = TIMER_MODES[nextMode].seconds;
+  activeSession.timer.running = false;
+  activeSession.timer.startedAtISO = null;
+  activeSession.timer.lastTickISO = null;
+  activeSession.timer.completedAtISO = null;
+
+  if (nextMode === "focus") {
+    activeSession.timer.currentBlockStartHHMM = "";
+    if (!Array.isArray(activeSession.timer.segments)) activeSession.timer.segments = [];
+    syncTimeUIFromSession(activeSession);
+  }
+
+  renderTimerFromSession(activeSession);
+  setSaveStatus("未保存…");
+  scheduleAutosave();
+}
+
 function bindTimer() {
   els.startTimerBtn.addEventListener("click", timerStart);
   els.pauseTimerBtn.addEventListener("click", timerPause);
   els.resetTimerBtn.addEventListener("click", timerReset);
+  els.focusModeBtn?.addEventListener("click", () => switchTimerMode("focus"));
+  els.shortBreakModeBtn?.addEventListener("click", () => switchTimerMode("short_break"));
+  els.longBreakModeBtn?.addEventListener("click", () => switchTimerMode("long_break"));
 }
 
 // Export
@@ -1211,6 +1466,24 @@ function bindSessionActions() {
   });
 }
 
+function bindCloudSync() {
+  const cfgInputs = [els.cloudToken, els.cloudGistId, els.cloudEnabled, els.cloudAutoSync];
+  for (const el of cfgInputs) {
+    el?.addEventListener("input", saveCloudConfigFromUI);
+    el?.addEventListener("change", saveCloudConfigFromUI);
+  }
+
+  els.cloudCreateBtn?.addEventListener("click", () => {
+    createCloudGist().catch((err) => setCloudStatus(`创建失败：${err.message || "未知错误"}`));
+  });
+  els.cloudPushBtn?.addEventListener("click", () => {
+    pushToCloud().catch((err) => setCloudStatus(`上传失败：${err.message || "未知错误"}`));
+  });
+  els.cloudPullBtn?.addEventListener("click", () => {
+    pullFromCloud().catch((err) => setCloudStatus(`下载失败：${err.message || "未知错误"}`));
+  });
+}
+
 function maybeStartWhiteNoiseAfterGesture() {
   if (!activeSession?.timer?.running) return;
   const type = els.whiteNoiseType?.value;
@@ -1228,6 +1501,7 @@ function maybeStartWhiteNoiseAfterGesture() {
 }
 
 function init() {
+  hydrateCloudUI();
   activeSession = ensureActiveSession();
   refreshHistorySelect(activeSession.id);
   hydrateFormFromSession(activeSession);
@@ -1236,6 +1510,7 @@ function init() {
   bindExport();
   bindHistory();
   bindSessionActions();
+  bindCloudSync();
 
   // resume ticking if running
   if (activeSession.timer?.running) startTicking();

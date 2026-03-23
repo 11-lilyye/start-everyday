@@ -47,6 +47,11 @@
                 <button id="pauseTimerBtn" class="btn btn--ghost" type="button" disabled>暂停</button>
                 <button id="resetTimerBtn" class="btn btn--ghost" type="button">重置</button>
               </div>
+              <div class="timer__modes">
+                <button id="focusModeBtn" class="btn btn--ghost" type="button">专注 25m</button>
+                <button id="shortBreakModeBtn" class="btn btn--ghost" type="button">短休 5m</button>
+                <button id="longBreakModeBtn" class="btn btn--ghost" type="button">长休 15m</button>
+              </div>
               <div class="timer__hint subtle">提示：开始时会自动写入“开始时间”；结束时会建议写“本轮结果”。</div>
               <div class="sound">
                 <div class="sectionTitle" style="margin-top:12px">声音（可选）</div>
@@ -153,6 +158,37 @@
           <button id="deleteHistoryBtn" class="btn btn--danger" type="button">删除</button>
         </div>
         <div class="subtle" id="saveStatus">未保存</div>
+      </section>
+
+      <section class="card">
+        <div class="sectionTitle">记忆模式（跨设备同步）</div>
+        <div class="subtle">使用 GitHub Gist 作为你的私有云端记忆库。不同设备填写同一配置即可共享记录。</div>
+        <div class="grid2">
+          <label class="field">
+            <div class="field__label">GitHub Token（需要 gist 权限）</div>
+            <input id="cloudToken" type="password" placeholder="ghp_xxx..." />
+          </label>
+          <label class="field">
+            <div class="field__label">Gist ID（首次可留空，点击“创建云端仓库”）</div>
+            <input id="cloudGistId" type="text" placeholder="例如：a1b2c3d4..." />
+          </label>
+        </div>
+        <div class="checks">
+          <label class="check">
+            <input id="cloudEnabled" type="checkbox" />
+            <span>启用记忆模式</span>
+          </label>
+          <label class="check">
+            <input id="cloudAutoSync" type="checkbox" />
+            <span>自动同步（保存后自动上传）</span>
+          </label>
+        </div>
+        <div class="history">
+          <button id="cloudCreateBtn" class="btn btn--ghost" type="button">创建云端仓库</button>
+          <button id="cloudPullBtn" class="btn btn--ghost" type="button">从云端下载</button>
+          <button id="cloudPushBtn" class="btn btn--primary" type="button">上传到云端</button>
+        </div>
+        <div class="subtle" id="cloudStatus">未启用</div>
       </section>
 
       <footer class="footer subtle">
